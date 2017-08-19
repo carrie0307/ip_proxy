@@ -278,8 +278,9 @@ def get_IP():
 
 
 if __name__ == '__main__':
-	# run_Getter()
-	# time.sleep(60)
+	run_Getter()
+	time.sleep(60)
+	ip_Verify()
 	# while True:
 		# print get_IP()
-	IP_Getter.get_XiciIP()
+	# IP_Getter.get_XiciIP()
