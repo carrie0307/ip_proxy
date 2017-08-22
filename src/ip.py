@@ -64,6 +64,8 @@ class IP_Getter():
 						break
 				if not flag: # 某省当天ip获取结束
 					break
+		print "the number of IP is " + str(ini_IP_q.qsize())
+		print "66代理ip获取完成...\n"
 
 	@staticmethod
 	def get_XiciIP():
@@ -80,7 +82,6 @@ class IP_Getter():
 					"Connection": "keep-alive"
 					}
 		while page < 2: # 每次只抓前3页（太久的不需要去抓取）;每抓完sleep十分钟，避免被Ban
-			print 'page: ' + str(page)
 			flag = True
 			url = 'http://www.xicidaili.com/nn/' + str(page)
 			html = requests.get(url, headers=headers, timeout=15).text
@@ -102,17 +103,18 @@ class IP_Getter():
 					port = ip_port[gap + 3: -3]
 					ip = ip + ":" + port
 					date = str(re.compile(r'<td>(\d+-\d+-\d+) \d+:\d+</td>').findall(td))[2:10]
-					print date
 					if date == std_date[2:]:
 						print ip
 						ini_IP_q.put(ip)
-						# print [ip]
 					else:
 						flag = False # 当天ip获取结束
 						break
 				if not flag: # 当天ip获取结束
 					page = page + 1
 					break
+		print "the number of IP is " + str(ini_IP_q.qsize())
+		print "Xici代理ip获取完成...\n"
+
 
 	@staticmethod
 	def goubanjia_get_IP(max_page):
@@ -149,6 +151,8 @@ class IP_Getter():
 						ip = ip + temp
 				ini_IP_q.put(ip)
 			ip_page = ip_page + 1
+		print "the number of IP is " + str(ini_IP_q.qsize())
+		print "Guobanjia代理ip获取完成...\n"
 
 
 	@staticmethod
@@ -179,6 +183,8 @@ class IP_Getter():
 					ip = tds[0].string + ':' + tds[1].string
 					ini_IP_q.put(ip)
 			ip_page = ip_page + 1
+		print "the number of IP is " + str(ini_IP_q.qsize())
+		print "ip181代理ip获取完成...\n"
 
 
 	@staticmethod
@@ -187,6 +193,7 @@ class IP_Getter():
 		功能：从快代理(www.kuaidaili.com)获取ip，将获取到的ip加入ini_IP_q队列
 		:ini_IP_q 初始获得ip的队列
 		'''
+		print "Kuaidaili starting \n"
 		ip_page = 1
 		while ip_page < 11: # 只有前10页合计100个ip可以爬取
 			url = 'http://www.kuaidaili.com/ops/proxylist/{page}/'
@@ -201,6 +208,9 @@ class IP_Getter():
 					if tds[2].string != '透明':
 						ip = tds[0].string + ':' + tds[1].string
 						ini_IP_q.put(ip)
+		print "the number of IP is " + str(ini_IP_q.qsize())
+		print "快代理ip获取完成...\n"
+
 
 	@staticmethod
 	def verify_IP():
@@ -210,14 +220,14 @@ class IP_Getter():
 		:available_IP_q 有效ip
 		'''
 		while True:
-			IP = ini_IP_q.get(timeout=60)
+			IP = ini_IP_q.get(timeout=120)
 			proxy = {'http': 'http://' + IP}
-			# print "测试：" + str(IP) + "\n"
+			print "测试：" + str(IP) + "\n"
 			try:
 				res=requests.get("http://www.baidu.com",proxies=proxy,timeout=10)
 				if res.content.find("百度一下")!=-1:
-					print str(IP) + " 可用 ...\n"
 					available_IP_q.put(proxy)
+					print "可用ip：" + str(available_IP_q.qsize())
 			except:
 				pass
 
@@ -229,20 +239,21 @@ def run_Getter():
 	'''
 	print 'getting ips...'
 	global get_IP_td
+	start = time.time()
 	get_66IP = threading.Thread(target=IP_Getter.get_66IP)
 	get_IP_td.append(get_66IP)
 	get_66IP.start()
+	kuaidaili_get_IP = threading.Thread(target=IP_Getter.kuaidaili_get_IP)
+	get_IP_td.append(kuaidaili_get_IP)
+	kuaidaili_get_IP.start()
+	ip181_get_IP = threading.Thread(target=IP_Getter.ip181_get_IP, args=(6,))
+	get_IP_td.append(ip181_get_IP)
+	ip181_get_IP.start()# ip更新最快
 	goubanjia_get_IP = threading.Thread(target=IP_Getter.goubanjia_get_IP,  args=(11,))
 	get_IP_td.append(goubanjia_get_IP)
 	goubanjia_get_IP.start()
-	ip181_get_IP = threading.Thread(target=IP_Getter.ip181_get_IP, args=(6,))
-	get_IP_td.append(ip181_get_IP)
-	ip181_get_IP.start()
 	# get_XiciIP = threading.Thread(target=IP_Getter.get_XiciIP)
 	# get_XiciIP.start()
-	print 'sleep ...'
-	time.sleep(60)
-	print 'verify ...'
 
 
 
@@ -253,7 +264,7 @@ def ip_Verify():
 	global ini_IP_q
 	global verify_IP_td
 	print "the num of IP is " + str(ini_IP_q.qsize())
-	for _ in range(5):
+	for _ in range(10):
 		verify_IP_td.append(threading.Thread(target=IP_Getter.verify_IP))
 	for td in verify_IP_td:
 		td.start()
@@ -261,26 +272,58 @@ def ip_Verify():
 
 
 def ip_watcher():
+	'''
+	监测可用ip数量
+	当可用ip少于10个且待verify的ip少于500个时，则要考虑重新开始获取ip
+	'''
+	print "watching ...\n"
 	global verify_IP_td
 	global get_IP_td
+	global available_IP_q
+	global ini_IP_q
+	while True:
+		if available_IP_q.qsize() < 10 and ini_IP_q.qsize() < 500:
+			print "待检测ip数量：" + str(ini_IP_q.qsize()) + "\n"
+			for i in range(len(get_IP_td)):
+				if not get_IP_td[i].isAlive(): # 如果某个获取进行不在工作，则运行该函数
+					if i == 0:
+						IP_Getter.get_66IP()
+					elif i == 1:
+						IP_Getter.kuaidaili_get_IP()
+					elif i ==2:
+						IP_Getter.ip181_get_IP(6)
+					else:
+						IP_Getter.goubanjia_get_IP(11)
+					time.sleep(3)
+					continue
+		else:
+			print "ip 充足 ... \n"
+			time.sleep(3) # 数量充足则先休眠，再继续运行
+
 
 def get_IP():
 	'''
 	获取验证后的有效ip，可作为以后使用的接口
+
+	verify函数与此函数之间必须有足够的时延，否则可能verify函数尚未检测出有效ip，而这里认为可用ip队列为空
+	但在实际使用时，考虑到本机ip与每个可用ip能够使用的时间，这个时延可以调整
 	'''
 	global available_IP_q
-	if available_IP_q.empty():
-		raise myException.available_IP_usedup
-	else:
-		ip = available_IP_q.get()
+	try:
+		ip = available_IP_q.get(timeout = 180)
+		print "获取到ip： " + str(ip) + "\n"
 		return ip
-
+	except:
+		raise myException.available_IP_usedup
 
 
 if __name__ == '__main__':
 	run_Getter()
-	time.sleep(60)
+	print 'sleeping ...'
+	time.sleep(30)
+	print 'start verifying ...\n'
 	ip_Verify()
+	time.sleep(60)
 	# while True:
-		# print get_IP()
+		# get_IP()
 	# IP_Getter.get_XiciIP()
